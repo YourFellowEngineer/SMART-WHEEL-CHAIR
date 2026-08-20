@@ -1,334 +1,335 @@
-<!DOCTYPE html><html class="dark" lang="en"><head>
+<!DOCTYPE html><html class="dark" lang="en" style=""><head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
-<title>Smart Ride - AI Object Detection</title>
+<title>Smart Ride - Voice Command</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700&amp;family=Epilogue:wght@400;450&amp;family=Libre+Caslon+Text:wght@500&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Chivo:wght@100..900&amp;family=Epilogue:wght@100..900&amp;display=swap" rel="stylesheet">
 <script id="tailwind-config">
         tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              "colors": {
-                      "tertiary-fixed": "#f1e0cf",
-                      "surface-tint": "#ffb596",
-                      "surface-dim": "#151313",
-                      "surface-container-low": "#1d1b1b",
-                      "tertiary-container": "#9d8e80",
-                      "on-tertiary-fixed-variant": "#504539",
-                      "on-error": "#690005",
-                      "inverse-on-surface": "#323030",
-                      "on-secondary-fixed-variant": "#5c4205",
-                      "on-surface": "#e7e1e1",
-                      "tertiary-fixed-dim": "#d4c4b4",
-                      "surface-container": "#211f1f",
-                      "surface-container-highest": "#373434",
-                      "outline-variant": "#42474c",
-                      "surface": "#151313",
-                      "on-tertiary-fixed": "#231a10",
-                      "on-background": "#e7e1e1",
-                      "primary": "#ffb596",
-                      "surface-container-high": "#2c292a",
-                      "surface-container-lowest": "#0f0e0e",
-                      "background": "#151313",
-                      "surface-bright": "#3b3839",
-                      "on-primary-fixed": "#360f00",
-                      "inverse-surface": "#e7e1e1",
-                      "error-container": "#93000a",
-                      "secondary": "#e7c17a",
-                      "on-tertiary": "#392f24",
-                      "on-primary": "#581e00",
-                      "on-secondary": "#412d00",
-                      "secondary-fixed-dim": "#e7c17a",
-                      "error": "#ffb4ab",
-                      "on-primary-fixed-variant": "#7d2d00",
-                      "on-surface-variant": "#c2c7cd",
-                      "tertiary": "#d4c4b4",
-                      "outline": "#8c9197",
-                      "secondary-container": "#5f4507",
-                      "on-tertiary-container": "#32281d",
-                      "inverse-primary": "#a14007",
-                      "surface-variant": "#373434",
-                      "on-primary-container": "#4d1900",
-                      "on-secondary-fixed": "#261900",
-                      "primary-container": "#e37038",
-                      "secondary-fixed": "#ffdea4",
-                      "primary-fixed": "#ffdbcd",
-                      "on-secondary-container": "#d8b36d",
-                      "primary-fixed-dim": "#ffb596",
-                      "on-error-container": "#ffdad6"
-              },
-              "borderRadius": {
-                      "DEFAULT": "1rem",
-                      "lg": "2rem",
-                      "xl": "3rem",
-                      "full": "9999px"
-              },
-              "spacing": {
-                      "gutter-desktop": "16px",
-                      "sm": "8px",
-                      "3xl": "56px",
-                      "lg": "20px",
-                      "6xl": "128px",
-                      "xl": "28px",
-                      "5xl": "96px",
-                      "md": "12px",
-                      "xs": "4px",
-                      "margin-desktop": "48px",
-                      "4xl": "72px",
-                      "2xl": "40px",
-                      "base": "4px"
-              },
-              "fontFamily": {
-                      "display-md": ["Chivo"],
-                      "headline-lg": ["Chivo"],
-                      "body-sm": ["Epilogue"],
-                      "display-xl-mobile": ["Chivo"],
-                      "display-xl": ["Chivo"],
-                      "body-lg": ["Epilogue"],
-                      "technical": ["Libre Caslon Text"]
-              },
-              "fontSize": {
-                      "display-md": ["76px", {"lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "600"}],
-                      "headline-lg": ["42px", {"lineHeight": "1.2", "fontWeight": "600"}],
-                      "body-sm": ["14px", {"lineHeight": "1.55", "fontWeight": "450"}],
-                      "display-xl-mobile": ["64px", {"lineHeight": "1.1", "fontWeight": "700"}],
-                      "display-xl": ["132px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                      "body-lg": ["18px", {"lineHeight": "1.65", "fontWeight": "400"}],
-                      "technical": ["12px", {"letterSpacing": "0.05em", "fontWeight": "500"}]
-              }
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                            "tertiary-fixed": "#f1e0cf",
+                            "surface-tint": "#ffb596",
+                            "surface-dim": "#151313",
+                            "surface-container-low": "#1d1b1b",
+                            "tertiary-container": "#9d8e80",
+                            "on-tertiary-fixed-variant": "#504539",
+                            "on-error": "#690005",
+                            "inverse-on-surface": "#323030",
+                            "on-secondary-fixed-variant": "#5c4205",
+                            "on-surface": "#e7e1e1",
+                            "tertiary-fixed-dim": "#d4c4b4",
+                            "surface-container": "#211f1f",
+                            "surface-container-highest": "#373434",
+                            "outline-variant": "#42474c",
+                            "surface": "#151313",
+                            "on-tertiary-fixed": "#231a10",
+                            "on-background": "#e7e1e1",
+                            "primary": "#ffb596",
+                            "surface-container-high": "#2c292a",
+                            "surface-container-lowest": "#0f0e0e",
+                            "background": "#151313",
+                            "surface-bright": "#3b3839",
+                            "on-primary-fixed": "#360f00",
+                            "inverse-surface": "#e7e1e1",
+                            "error-container": "#93000a",
+                            "secondary": "#e7c17a",
+                            "on-tertiary": "#392f24",
+                            "on-primary": "#581e00",
+                            "on-secondary": "#412d00",
+                            "secondary-fixed-dim": "#e7c17a",
+                            "error": "#ffb4ab",
+                            "on-primary-fixed-variant": "#7d2d00",
+                            "on-surface-variant": "#c2c7cd",
+                            "tertiary": "#d4c4b4",
+                            "outline": "#8c9197",
+                            "secondary-container": "#5f4507",
+                            "on-tertiary-container": "#32281d",
+                            "inverse-primary": "#a14007",
+                            "surface-variant": "#373434",
+                            "on-primary-container": "#4d1900",
+                            "on-secondary-fixed": "#261900",
+                            "primary-container": "#e37038",
+                            "secondary-fixed": "#ffdea4",
+                            "primary-fixed": "#ffdbcd",
+                            "on-secondary-container": "#d8b36d",
+                            "primary-fixed-dim": "#ffb596",
+                            "on-error-container": "#ffdad6"
+                    },
+                    "borderRadius": {
+                            "DEFAULT": "1rem",
+                            "lg": "2rem",
+                            "xl": "3rem",
+                            "full": "9999px"
+                    },
+                    "spacing": {
+                            "gutter-desktop": "16px",
+                            "sm": "8px",
+                            "3xl": "56px",
+                            "lg": "20px",
+                            "6xl": "128px",
+                            "xl": "28px",
+                            "5xl": "96px",
+                            "md": "12px",
+                            "xs": "4px",
+                            "margin-desktop": "48px",
+                            "4xl": "72px",
+                            "2xl": "40px",
+                            "base": "4px"
+                    },
+                    "fontFamily": {
+                            "display-md": [
+                                    "Chivo"
+                            ],
+                            "headline-lg": [
+                                    "Chivo"
+                            ],
+                            "body-sm": [
+                                    "Epilogue"
+                            ],
+                            "display-xl-mobile": [
+                                    "Chivo"
+                            ],
+                            "display-xl": [
+                                    "Chivo"
+                            ],
+                            "body-lg": [
+                                    "Epilogue"
+                            ],
+                            "technical": [
+                                    "Libre Caslon Text"
+                            ]
+                    },
+                    "fontSize": {
+                            "display-md": [
+                                    "76px",
+                                    {
+                                            "lineHeight": "1.1",
+                                            "letterSpacing": "-0.01em",
+                                            "fontWeight": "600"
+                                    }
+                            ],
+                            "headline-lg": [
+                                    "42px",
+                                    {
+                                            "lineHeight": "1.2",
+                                            "fontWeight": "600"
+                                    }
+                            ],
+                            "body-sm": [
+                                    "14px",
+                                    {
+                                            "lineHeight": "1.55",
+                                            "fontWeight": "450"
+                                    }
+                            ],
+                            "display-xl-mobile": [
+                                    "64px",
+                                    {
+                                            "lineHeight": "1.1",
+                                            "fontWeight": "700"
+                                    }
+                            ],
+                            "display-xl": [
+                                    "132px",
+                                    {
+                                            "lineHeight": "1.1",
+                                            "letterSpacing": "-0.02em",
+                                            "fontWeight": "700"
+                                    }
+                            ],
+                            "body-lg": [
+                                    "18px",
+                                    {
+                                            "lineHeight": "1.65",
+                                            "fontWeight": "400"
+                                    }
+                            ],
+                            "technical": [
+                                    "12px",
+                                    {
+                                            "letterSpacing": "0.05em",
+                                            "fontWeight": "500"
+                                    }
+                            ]
+                    }
             },
-          },
+                },
         }
     </script>
 <style>
-        /* Blueprint Grid Overlay */
-        .bg-blueprint {
+        .blueprint-grid {
             background-image: 
-                linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
             background-size: 40px 40px;
         }
-        /* Radar Animation */
-        @keyframes radarSweep {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        
+        @keyframes pulse-waveform {
+            0%, 100% { transform: scaleY(1); opacity: 0.8; }
+            50% { transform: scaleY(1.5); opacity: 1; }
         }
-        .radar-sweep {
-            animation: radarSweep 4s linear infinite;
-            background: conic-gradient(from 0deg, transparent 70%, rgba(255, 181, 150, 0.2) 100%);
+        
+        .wave-bar {
+            animation: pulse-waveform 1.5s ease-in-out infinite;
+            transform-origin: center;
         }
-        @keyframes pulseRing {
-            0% { transform: scale(0.8); opacity: 0.5; }
-            100% { transform: scale(2); opacity: 0; }
+        .wave-bar:nth-child(even) { animation-delay: 0.2s; }
+        .wave-bar:nth-child(3n) { animation-delay: 0.4s; }
+        .wave-bar:nth-child(5n) { animation-delay: 0.6s; }
+        
+        @keyframes glow-pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(255, 181, 150, 0.1); }
+            50% { box-shadow: 0 0 40px rgba(255, 181, 150, 0.3); }
         }
-        .pulse-ring {
-            animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        
+        .ai-core-glow {
+            animation: glow-pulse 3s infinite;
         }
     </style>
 </head>
-<body class="bg-background text-on-background min-h-screen font-body-sm selection:bg-primary-container selection:text-on-primary-container">
+<body class="bg-background text-on-background min-h-screen blueprint-grid flex flex-col font-body-sm selection:bg-primary selection:text-on-primary">
 <!-- TopNavBar -->
-<nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-outline-variant/30 flex justify-between items-center px-margin-desktop py-md max-w-full mx-auto">
-<div class="flex items-center gap-md">
-<span class="font-display-md text-display-md text-primary tracking-tight">Smart Ride</span>
+<nav class="bg-background/80 backdrop-blur-md dark:bg-background/80 fixed top-0 w-full z-50 border-b border-outline-variant/30 flat no shadows flex justify-between items-center px-margin-desktop py-md max-w-full mx-auto">
+<div class="flex items-center gap-lg">
+<span class="font-display-md text-display-md text-primary dark:text-primary">Smart Ride</span>
+<div class="hidden md:flex gap-md ml-xl">
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors hover:text-primary-container transition-all scale-95 duration-200" href="#">Features</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors hover:text-primary-container transition-all scale-95 duration-200" href="#">How It Works</a>
+<a class="font-body-lg text-body-lg text-primary border-b-2 border-primary pb-1 hover:text-primary-container transition-all scale-95 duration-200" href="#">Dashboard</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors hover:text-primary-container transition-all scale-95 duration-200" href="#">Safety</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors hover:text-primary-container transition-all scale-95 duration-200" href="#">About</a>
+<a class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors hover:text-primary-container transition-all scale-95 duration-200" href="#">Contact</a>
 </div>
-<div class="hidden md:flex gap-xl font-body-lg text-body-lg">
-<a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Features</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors" href="#">How It Works</a>
-<a class="text-primary border-b-2 border-primary pb-1" href="#">Dashboard</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Safety</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors" href="#">About</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors" href="#">Contact</a>
 </div>
-<button class="bg-[#C45923] text-[#FFFFFF] px-xl py-sm rounded-full font-technical hover:opacity-90 transition-opacity scale-95 duration-200">
-            Request Demo
-        </button>
+<div>
+<button class="bg-[#C45923] text-[#FFFFFF] px-lg py-sm rounded-DEFAULT font-technical text-technical uppercase hover:bg-primary-container transition-colors hidden md:block">Request Demo</button>
+</div>
 </nav>
-<!-- Main Layout Grid -->
-<div class="flex h-screen pt-[120px] px-margin-desktop gap-gutter-desktop max-w-[1440px] mx-auto pb-3xl">
-<!-- SideNavBar (Semantic: Settings/System Info) -->
-<aside class="hidden md:flex flex-col h-full py-xl w-64 border-r border-outline-variant/20 bg-surface-container-low mr-xl">
-<div class="px-lg mb-2xl">
-<p class="font-display-xl-mobile text-display-xl-mobile text-on-surface leading-tight mb-xs">Smart Ride OS</p>
-<p class="font-technical text-technical text-on-surface-variant">MedTech v4.2.1</p>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-5xl px-margin-desktop pb-6xl flex flex-col items-center justify-center relative overflow-hidden">
+<!-- Ambient Background Glow -->
+<div class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
+<div class="w-[600px] h-[600px] bg-primary rounded-full blur-[120px]"></div>
 </div>
-<nav class="flex-1 flex flex-col gap-sm px-sm font-technical text-technical"><a class="flex items-center gap-md px-md py-sm rounded-lg text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings_input_component</span>Drive Control</a><a class="flex items-center gap-md px-md py-sm rounded-lg text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">mic</span>Voice Control</a><a class="flex items-center gap-md px-md py-sm rounded-lg text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">videocam</span>Camera Views</a><a class="flex items-center gap-md px-md py-sm rounded-lg bg-primary-container/10 text-primary border-r-4 border-primary" href="#"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">radar</span>Safety Radar</a><a class="flex items-center gap-md px-md py-sm rounded-lg text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">help</span>Help</a></nav>
-<div class="px-sm mt-auto border-t border-outline-variant/20 pt-lg">
-<button class="w-full flex items-center justify-center gap-sm bg-error-container text-on-error-container py-md rounded-lg font-technical hover:opacity-90 transition-opacity">
-<span class="material-symbols-outlined">warning</span>
-                    Emergency Stop
-                </button>
-</div>
-
+<div class="w-full flex flex-col md:flex-row gap-xl z-10 max-w-full"><!-- Left Sidebar (Preserved) -->
+<aside class="hidden md:flex flex-col bg-surface-container-low border-r border-outline-variant/20 h-full py-xl rounded-lg w-48 flex-shrink-0">
+  <div class="px-lg mb-xl">
+    <h2 class="font-technical text-technical text-primary tracking-widest uppercase mb-sm">Navigation</h2>
+  </div>
+  <nav class="flex-grow flex flex-col gap-xs">
+    <a class="flex items-center gap-sm px-lg py-sm font-technical text-technical text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#">
+      <span class="material-symbols-outlined text-[18px]">directions_car</span> Drive Control
+    </a>
+    <a class="flex items-center gap-sm px-lg py-sm font-technical text-technical bg-primary-container/10 text-primary border-r-4 border-primary transition-all opacity-80 hover:opacity-100" href="#">
+      <span class="material-symbols-outlined text-[18px]">mic</span> Voice Control
+    </a>
+    <a class="flex items-center gap-sm px-lg py-sm font-technical text-technical text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#">
+      <span class="material-symbols-outlined text-[18px]">videocam</span> Camera Views
+    </a>
+    <a class="flex items-center gap-sm px-lg py-sm font-technical text-technical text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#">
+      <span class="material-symbols-outlined text-[18px]">radar</span> Safety Radar
+    </a>
+    <a class="flex items-center gap-sm px-lg py-sm font-technical text-technical text-on-tertiary-fixed-variant hover:bg-surface-container-high transition-all opacity-80 hover:opacity-100" href="#">
+      <span class="material-symbols-outlined text-[18px]">help</span> Help
+    </a>
+  </nav>
 </aside>
-<!-- Main Content Area: AI Object Detection -->
-<main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-gutter-desktop h-[calc(100vh-160px)]">
-<!-- Canvas: Proximity Awareness Radar (Col 1-8) -->
-<section class="lg:col-span-8 bg-surface-container rounded-xl border border-outline-variant/30 relative overflow-hidden flex flex-col">
-<!-- Status Strip -->
-<div class="h-8 border-b border-outline-variant/30 flex items-center px-lg bg-surface-container-highest">
-<div class="flex items-center gap-sm">
-<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-<span class="font-technical text-technical text-primary tracking-widest uppercase">AI Vision Active</span>
-</div>
-</div>
-<!-- Radar Visualization -->
-<div class="flex-1 relative bg-surface-dim bg-blueprint flex items-center justify-center overflow-hidden">
-<!-- Radar Rings -->
-<div class="absolute inset-0 flex items-center justify-center opacity-30">
-<div class="w-[800px] h-[800px] rounded-full border border-primary/20 absolute"></div>
-<div class="w-[600px] h-[600px] rounded-full border border-primary/30 absolute"></div>
-<div class="w-[400px] h-[400px] rounded-full border border-primary/40 absolute"></div>
-<div class="w-[200px] h-[200px] rounded-full border border-primary/60 absolute pulse-ring"></div>
-<!-- Crosshairs -->
-<div class="w-full h-[1px] bg-primary/20 absolute"></div>
-<div class="h-full w-[1px] bg-primary/20 absolute"></div>
-</div>
-<!-- Radar Sweep -->
-<div class="absolute w-[800px] h-[800px] rounded-full radar-sweep pointer-events-none"></div>
-<!-- Center: Wheelchair -->
-<div class="relative z-10 w-16 h-16 bg-surface-container rounded-full border-2 border-primary flex items-center justify-center shadow-[0_0_20px_rgba(255,181,150,0.3)]">
-<span class="material-symbols-outlined text-primary text-[32px]">wheelchair_pickup</span>
-</div>
-<!-- Detected Objects -->
-<!-- Object 1: Warning -->
-<div class="absolute top-[20%] left-[30%] z-20 group">
-<div class="w-4 h-4 bg-error rounded-full animate-bounce shadow-[0_0_15px_rgba(255,180,171,0.6)]"></div>
-<div class="absolute top-6 left-1/2 -translate-x-1/2 w-[1px] h-8 bg-error/50"></div>
-<div class="absolute top-14 left-1/2 -translate-x-1/2 bg-surface-container-high border border-error/50 px-md py-xs rounded font-technical text-technical text-error whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                            Pedestrian - 2.1m (High Risk)
-                        </div>
-</div>
-<!-- Object 2: Caution -->
-<div class="absolute top-[60%] right-[25%] z-20 group">
-<div class="w-3 h-3 bg-secondary rounded-full shadow-[0_0_10px_rgba(231,193,122,0.4)]"></div>
-<div class="absolute top-5 left-1/2 -translate-x-1/2 w-[1px] h-6 bg-secondary/50"></div>
-<div class="absolute top-11 left-1/2 -translate-x-1/2 bg-surface-container-high border border-secondary/50 px-md py-xs rounded font-technical text-technical text-secondary whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                            Bicycle - 5.4m (Caution)
-                        </div>
-</div>
-<!-- Object 3: Safe -->
-<div class="absolute bottom-[20%] left-[40%] z-20 group">
-<div class="w-2 h-2 bg-outline rounded-full"></div>
-<div class="absolute top-3 left-1/2 -translate-x-1/2 bg-surface-container-high border border-outline/50 px-md py-xs rounded font-technical text-technical text-outline whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                            Static Object - 8.2m
-                        </div>
-</div>
-<!-- Technical Annotation Overlay -->
-<div class="absolute top-lg left-lg font-technical text-technical text-on-surface-variant flex flex-col gap-xs opacity-70">
-<span class="">FOV: 360° LiDAR</span>
-<span class="">Range: 15m</span>
-<span class="">Refresh: 60Hz</span>
-</div>
-</div>
+
+<!-- Central AI Assistant Interface -->
+<section class="flex-grow flex flex-col gap-xl">
+  <div class="bg-surface-container border border-outline-variant/30 rounded-xl p-2xl flex flex-col items-center justify-center relative overflow-hidden ai-core-glow h-[400px]">
+    <div class="absolute inset-0 blueprint-grid opacity-10"></div>
+    <div class="relative z-10 flex flex-col items-center gap-xl">
+      <div class="w-24 h-24 rounded-full bg-surface-container-highest border-2 border-primary flex items-center justify-center relative">
+        <div class="absolute inset-0 rounded-full border-4 border-primary/20 animate-ping"></div>
+        <span class="material-symbols-outlined text-primary text-[48px]">mic</span>
+      </div>
+      <div class="flex items-center gap-sm h-16 w-64 justify-center">
+        <div class="w-1.5 bg-primary wave-bar h-4"></div>
+        <div class="w-1.5 bg-primary wave-bar h-8"></div>
+        <div class="w-1.5 bg-primary wave-bar h-12"></div>
+        <div class="w-1.5 bg-primary wave-bar h-16"></div>
+        <div class="w-1.5 bg-primary wave-bar h-10"></div>
+        <div class="w-1.5 bg-primary wave-bar h-14"></div>
+        <div class="w-1.5 bg-primary wave-bar h-6"></div>
+      </div>
+      <div class="text-center">
+        <p class="font-technical text-technical text-primary mb-xs tracking-widest uppercase">System Ready</p>
+        <h3 class="font-headline-lg text-headline-lg text-on-surface">"How can I help you today?"</h3>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Log Area -->
+  <div class="bg-surface-container-low border border-outline-variant/20 rounded-lg p-lg flex-grow">
+    <div class="flex items-center gap-sm mb-md border-b border-outline-variant/10 pb-sm">
+      <span class="material-symbols-outlined text-on-surface-variant text-[16px]">history</span>
+      <span class="font-technical text-technical text-on-surface-variant uppercase tracking-wider">Command History</span>
+    </div>
+    <div class="flex flex-col gap-md opacity-70">
+      <div class="flex justify-between items-start">
+        <p class="font-body-sm text-on-surface">"Check battery status"</p>
+        <span class="font-technical text-technical text-on-surface-variant/50">12:04 PM</span>
+      </div>
+      <div class="flex justify-between items-start">
+        <p class="font-body-sm text-on-surface">"Set speed to 3 mph"</p>
+        <span class="font-technical text-technical text-on-surface-variant/50">11:58 AM</span>
+      </div>
+    </div>
+  </div>
 </section>
-<!-- Sidebar: Detected Obstacles (Col 9-12) -->
-<section class="lg:col-span-4 flex flex-col gap-lg h-full overflow-y-auto pr-sm custom-scrollbar">
-<div class="bg-surface-container-low rounded-xl border border-outline-variant/20 p-lg">
-<h2 class="font-headline-lg text-headline-lg text-on-surface mb-md">Threat Matrix</h2>
-<p class="font-body-sm text-body-sm text-on-surface-variant mb-xl">Real-time classification of proximal objects based on trajectory and velocity analysis.</p>
-<!-- Alert Cards -->
-<div class="flex flex-col gap-md">
-<!-- High Risk Card -->
-<div class="bg-surface-container border border-error/30 rounded-lg p-md relative overflow-hidden">
-<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
-<div class="flex justify-between items-start mb-sm pl-sm">
-<div class="flex items-center gap-xs text-error font-technical text-technical">
-<span class="material-symbols-outlined text-[16px]">directions_walk</span>
-<span class="">Pedestrian</span>
-</div>
-<span class="bg-error-container text-on-error-container px-xs py-[2px] rounded text-[10px] font-bold uppercase tracking-wider">Warning</span>
-</div>
-<div class="pl-sm">
-<div class="flex justify-between items-baseline mb-xs">
-<span class="font-body-sm text-on-surface-variant">Distance:</span>
-<span class="font-technical text-[16px] text-on-surface font-bold">2.1m</span>
-</div>
-<div class="flex justify-between items-baseline">
-<span class="font-body-sm text-on-surface-variant">Est. Time to Impact:</span>
-<span class="font-technical text-[16px] text-error font-bold">1.8s</span>
-</div>
-</div>
-</div>
-<!-- Caution Card -->
-<div class="bg-surface-container border border-secondary/30 rounded-lg p-md relative overflow-hidden">
-<div class="absolute left-0 top-0 bottom-0 w-1 bg-secondary"></div>
-<div class="flex justify-between items-start mb-sm pl-sm">
-<div class="flex items-center gap-xs text-secondary font-technical text-technical">
-<span class="material-symbols-outlined text-[16px]">pedal_bike</span>
-<span class="">Bicycle</span>
-</div>
-<span class="bg-secondary-container text-on-secondary-container px-xs py-[2px] rounded text-[10px] font-bold uppercase tracking-wider">Caution</span>
-</div>
-<div class="pl-sm">
-<div class="flex justify-between items-baseline mb-xs">
-<span class="font-body-sm text-on-surface-variant">Distance:</span>
-<span class="font-technical text-[16px] text-on-surface font-bold">5.4m</span>
-</div>
-<div class="flex justify-between items-baseline">
-<span class="font-body-sm text-on-surface-variant">Relative Velocity:</span>
-<span class="font-technical text-[16px] text-secondary font-bold">+12km/h</span>
-</div>
-</div>
-</div>
-<!-- Safe Card -->
-<div class="bg-surface-container border border-outline-variant/30 rounded-lg p-md relative overflow-hidden opacity-70">
-<div class="absolute left-0 top-0 bottom-0 w-1 bg-outline"></div>
-<div class="flex justify-between items-start mb-sm pl-sm">
-<div class="flex items-center gap-xs text-outline font-technical text-technical">
-<span class="material-symbols-outlined text-[16px]">inventory_2</span>
-<span class="">Static Object</span>
-</div>
-<span class="bg-surface-variant text-on-surface-variant px-xs py-[2px] rounded text-[10px] font-bold uppercase tracking-wider">Safe</span>
-</div>
-<div class="pl-sm flex justify-between items-baseline">
-<span class="font-body-sm text-on-surface-variant">Distance:</span>
-<span class="font-technical text-[16px] text-on-surface">8.2m</span>
-</div>
-</div>
-</div>
-</div>
-<!-- Sensor Health -->
-<div class="bg-surface-container-low rounded-xl border border-outline-variant/20 p-lg mt-auto">
-<h3 class="font-technical text-technical text-primary mb-md uppercase tracking-widest">Sensor Array Status</h3>
-<div class="grid grid-cols-2 gap-sm">
-<div class="bg-surface p-sm border border-outline-variant/20 rounded flex items-center justify-between">
-<span class="font-body-sm text-on-surface-variant">LiDAR Top</span>
-<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(255,181,150,0.8)]"></span>
-</div>
-<div class="bg-surface p-sm border border-outline-variant/20 rounded flex items-center justify-between">
-<span class="font-body-sm text-on-surface-variant">Ultrasonic L</span>
-<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(255,181,150,0.8)]"></span>
-</div>
-<div class="bg-surface p-sm border border-outline-variant/20 rounded flex items-center justify-between">
-<span class="font-body-sm text-on-surface-variant">Ultrasonic R</span>
-<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(255,181,150,0.8)]"></span>
-</div>
-<div class="bg-surface p-sm border border-outline-variant/20 rounded flex items-center justify-between">
-<span class="font-body-sm text-on-surface-variant">Stereo Cam</span>
-<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(255,181,150,0.8)]"></span>
-</div>
-</div>
-</div>
-</section>
+
+<!-- Right Side: Core Features Panel -->
+<aside class="w-full md:w-80 flex flex-col gap-lg">
+  <div class="bg-surface-container-high border border-outline-variant/30 rounded-xl p-lg">
+    <h2 class="font-technical text-technical text-primary tracking-widest uppercase mb-xl border-b border-outline-variant/20 pb-sm">Core Features</h2>
+    <div class="flex flex-col gap-md">
+      <div class="flex items-center gap-md p-md bg-surface-container rounded-lg border border-outline-variant/10">
+        <span class="material-symbols-outlined text-primary">settings_accessibility</span>
+        <span class="font-body-lg text-on-surface">Motorized Movement</span>
+      </div>
+      <div class="flex items-center gap-md p-md bg-primary-container/10 rounded-lg border border-primary/30">
+        <span class="material-symbols-outlined text-primary">record_voice_over</span>
+        <span class="font-body-lg text-primary">Voice Command</span>
+      </div>
+      <div class="flex items-center gap-md p-md bg-surface-container rounded-lg border border-outline-variant/10">
+        <span class="material-symbols-outlined text-primary">videocam</span>
+        <span class="font-body-lg text-on-surface">AI Cameras (Front/Rear)</span>
+      </div>
+      <div class="flex items-center gap-md p-md bg-surface-container rounded-lg border border-outline-variant/10">
+        <span class="material-symbols-outlined text-primary">radar</span>
+        <span class="font-body-lg text-on-surface">Object Detection</span>
+      </div>
+      <div class="flex items-center gap-md p-md bg-error-container/20 rounded-lg border border-error/30 mt-xl">
+        <span class="material-symbols-outlined text-error">emergency_home</span>
+        <span class="font-body-lg text-error font-bold">Emergency Stop</span>
+      </div>
+    </div>
+  </div>
+</aside></div>
 </main>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest dark:bg-surface-container-lowest w-full border-t border-outline-variant/10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-lg px-margin-desktop py-3xl flat">
+<div>
+<span class="font-display-md text-display-md text-primary block mb-md">Smart Ride</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant">© 2024 Smart Ride MedTech Ecosystem. All rights reserved.</p>
 </div>
-<!-- Custom Scrollbar Style for Sidebar -->
-<style>
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: #42474c;
-            border-radius: 4px;
-        }
-    </style>
+<div class="flex flex-col gap-sm">
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Accessibility</a>
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Privacy Policy</a>
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">User Manual</a>
+</div>
+<div class="flex flex-col gap-sm">
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Emergency Protocol</a>
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Regulatory Compliance</a>
+<a class="font-body-sm text-body-sm text-on-tertiary-fixed-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Quality Management</a>
+</div>
+</footer>
 
 
 </body></html>
