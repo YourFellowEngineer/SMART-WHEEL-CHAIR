@@ -1,553 +1,1041 @@
 <<<<<<< HEAD
-import { d } from 'typegpu';
+import {
+  tgpu,
+  d,
+  type TgpuBindGroup,
+  type TgpuComputeFn,
+  type TgpuFragmentFn,
+  type TgpuRenderPipeline,
+} from 'typegpu';
+import * as p from './params.ts';
+import {
+  fragmentImageFn,
+  fragmentInkFn,
+  fragmentVelFn,
+  renderFn,
+  renderLayout,
+} from './render.ts';
+import * as c from './simulation.ts';
+import type { BrushState } from './types.ts';
+import { defineControls } from './common/defineControls.ts';
 
-const body = document.querySelector('body') as HTMLBodyElement;
-body.style.display = 'flex';
-body.style.flexDirection = 'column';
-body.style.alignItems = 'center';
-body.style.height = '100vh';
-body.style.gap = '1.5rem';
-body.style.margin = '0';
-body.style.boxSizing = 'border-box';
-body.style.padding = '1rem';
+// Initialize
+const root = await tgpu.init();
+const device = root.device;
 
-// Resize canvases
-for (const canvas of document.querySelectorAll('canvas')) {
-  if ('width' in canvas.attributes || 'height' in canvas.attributes) {
-    continue; // custom canvas, not replacing with resizable
+// Setup canvas
+const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+const context = root.configureContext({ canvas, alphaMode: 'premultiplied' });
+
+// Helpers
+function createField(name: string) {
+  return root
+    .createTexture({ size: [p.SIM_N, p.SIM_N], format: 'rgba16float' })
+    .$usage('storage', 'sampled')
+    .$name(name);
+}
+
+function createComputePipeline(fn: TgpuComputeFn) {
+  return root.createComputePipeline({ compute: fn });
+}
+
+function toGrid(x: number, y: number): [number, number] {
+  const gx = Math.floor((x / canvas.width) * p.SIM_N);
+  const gy = Math.floor(((canvas.height - y) / canvas.height) * p.SIM_N);
+  return [gx, gy];
+}
+
+class DoubleBuffer<T> {
+  buffers: [T, T];
+  index: number;
+  constructor(bufferA: T, bufferB: T, initialIndex = 0) {
+    this.buffers = [bufferA, bufferB];
+    this.index = initialIndex;
   }
 
-  const container = document.createElement('div');
-  const frame = document.createElement('div');
+  get current(): T {
+    return this.buffers[this.index];
+  }
+  get currentIndex(): number {
+    return this.index;
+  }
 
-  canvas.parentElement?.replaceChild(container, canvas);
+  swap(): void {
+    this.index ^= 1;
+  }
+  setCurrent(index: number): void {
+    this.index = index;
+  }
+}
 
-  frame.appendChild(canvas);
-  container.appendChild(frame);
+// Buffers and brush state
+const simParamBuffer = root
+  .createBuffer(p.ShaderParams, {
+    dt: p.params.dt,
+    viscosity: p.params.viscosity,
+  })
+  .$usage('uniform');
 
-  container.style.display = 'flex';
-  container.style.flex = '1';
-  container.style.justifyContent = 'center';
-  container.style.alignItems = 'top';
-  container.style.width = '100%';
+const brushParamBuffer = root
+  .createBuffer(p.BrushParams, {
+    pos: d.vec2i(0, 0),
+    delta: d.vec2f(0, 0),
+    radius: p.RADIUS,
+    forceScale: p.FORCE_SCALE,
+    inkAmount: p.INK_AMOUNT,
+  })
+  .$usage('uniform');
 
-  container.style.containerType = 'size';
+let brushState: BrushState = {
+  pos: [0, 0],
+  delta: [0, 0],
+  isDown: false,
+};
 
-  frame.style.position = 'relative';
+// Load and create background texture
+const response = await fetch('https://docs.swmansion.com/TypeGPU/plums.jpg');
+const plums = await createImageBitmap(await response.blob(), {
+  resizeWidth: p.N,
+  resizeHeight: p.N,
+  resizeQuality: 'high',
+});
 
-  if (canvas.dataset.fitToContainer !== undefined) {
-    frame.style.width = '100%';
-    frame.style.height = '100%';
+const backgroundTexture = root
+  .createTexture({ size: [p.N, p.N], format: 'rgba8unorm' })
+  .$usage('sampled', 'render');
+device.queue.copyExternalImageToTexture(
+  { source: plums },
+  { texture: root.unwrap(backgroundTexture) },
+  { width: p.N, height: p.N, depthOrArrayLayers: 1 }
+);
+
+// Create simulation textures
+const velTex = [createField('velocity0'), createField('velocity1')];
+const inkTex = [createField('density0'), createField('density1')];
+const pressureTex = [createField('pressure0'), createField('pressure1')];
+
+const newInkTex = createField('addedInk');
+const forceTex = createField('force');
+const divergenceTex = createField('divergence');
+
+const linSampler = root.createSampler({
+  magFilter: 'linear',
+  minFilter: 'linear',
+});
+
+// Create compute pipelines
+const brushPipeline = createComputePipeline(c.brushFn);
+const addForcePipeline = createComputePipeline(c.addForcesFn);
+const advectPipeline = createComputePipeline(c.advectFn);
+const diffusionPipeline = createComputePipeline(c.diffusionFn);
+const divergencePipeline = createComputePipeline(c.divergenceFn);
+const pressurePipeline = createComputePipeline(c.pressureFn);
+const projectPipeline = createComputePipeline(c.projectFn);
+const advectInkPipeline = createComputePipeline(c.advectInkFn);
+const addInkPipeline = createComputePipeline(c.addInkFn);
+
+// Create render pipelines
+function createRenderPipeline(
+  fragmentFn: TgpuFragmentFn<{ uv: d.Vec2f }, d.Vec4f>
+) {
+  return root.createRenderPipeline({
+    vertex: renderFn,
+    fragment: fragmentFn,
+
+    primitive: {
+      topology: 'triangle-strip',
+    },
+  });
+}
+
+const renderPipelineInk = createRenderPipeline(fragmentInkFn);
+const renderPipelineVel = createRenderPipeline(fragmentVelFn);
+const renderPipelineImage = createRenderPipeline(fragmentImageFn);
+
+// Setup simulation buffers
+const velBuffer = new DoubleBuffer(velTex[0], velTex[1]);
+const inkBuffer = new DoubleBuffer(inkTex[0], inkTex[1]);
+const pressureBuffer = new DoubleBuffer(pressureTex[0], pressureTex[1]);
+
+const dispatchX = Math.ceil(p.SIM_N / p.WORKGROUP_SIZE_X);
+const dispatchY = Math.ceil(p.SIM_N / p.WORKGROUP_SIZE_Y);
+
+// Create bind groups
+const brushBindGroup = root.createBindGroup(c.brushLayout, {
+  brushParams: brushParamBuffer,
+  forceDst: forceTex.createView(
+    d.textureStorage2d('rgba16float', 'write-only')
+  ),
+  inkDst: newInkTex.createView(d.textureStorage2d('rgba16float', 'write-only')),
+});
+
+const addInkBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.addInkLayout, {
+    src: inkTex[srcIdx].createView(d.texture2d(d.f32)),
+    add: newInkTex.createView(d.texture2d(d.f32)),
+    dst: inkTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const addForceBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.addForcesLayout, {
+    src: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    force: forceTex.createView(d.texture2d(d.f32)),
+    dst: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+  });
+});
+
+const advectBindGroups = [0, 1].map((i) => {
+  const srcIdx = 1 - i;
+  const dstIdx = i;
+  return root.createBindGroup(c.advectLayout, {
+    src: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    dst: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+    linSampler,
+  });
+});
+
+const diffusionBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.diffusionLayout, {
+    in: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    out: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+  });
+});
+
+const divergenceBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  return root.createBindGroup(c.divergenceLayout, {
+    vel: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    div: divergenceTex.createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const pressureBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.pressureLayout, {
+    x: pressureTex[srcIdx].createView(d.texture2d(d.f32)),
+    b: divergenceTex.createView(d.texture2d(d.f32)),
+    out: pressureTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const projectBindGroups = [0, 1].map((velIdx) =>
+  [0, 1].map((pIdx) => {
+    const srcVelIdx = velIdx;
+    const dstVelIdx = 1 - velIdx;
+    const srcPIdx = pIdx;
+    return root.createBindGroup(c.projectLayout, {
+      vel: velTex[srcVelIdx].createView(d.texture2d(d.f32)),
+      p: pressureTex[srcPIdx].createView(d.texture2d(d.f32)),
+      out: velTex[dstVelIdx].createView(
+        d.textureStorage2d('rgba16float', 'write-only')
+      ),
+    });
+  })
+);
+
+const advectInkBindGroups = [0, 1].map((velIdx) =>
+  [0, 1].map((inkIdx) => {
+    const srcVelIdx = velIdx;
+    const srcInkIdx = inkIdx;
+    const dstInkIdx = 1 - inkIdx;
+    return root.createBindGroup(c.advectInkLayout, {
+      vel: velTex[srcVelIdx].createView(d.texture2d(d.f32)),
+      src: inkTex[srcInkIdx].createView(d.texture2d(d.f32)),
+      dst: inkTex[dstInkIdx].createView(
+        d.textureStorage2d('rgba16float', 'write-only')
+      ),
+      simParams: simParamBuffer,
+      linSampler,
+    });
+  })
+);
+
+const renderBindGroups = {
+  ink: [
+    root.createBindGroup(renderLayout, {
+      result: inkTex[0].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+    root.createBindGroup(renderLayout, {
+      result: inkTex[1].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+  ],
+  velocity: [
+    root.createBindGroup(renderLayout, {
+      result: velTex[0].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+    root.createBindGroup(renderLayout, {
+      result: velTex[1].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+  ],
+};
+
+// Main rendering loop
+function loop() {
+  if (p.params.paused) {
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  if (brushState.isDown) {
+    brushParamBuffer.patch({
+      pos: d.vec2i(...brushState.pos),
+      delta: d.vec2f(...brushState.delta),
+    });
+
+    brushPipeline.with(brushBindGroup).dispatchWorkgroups(dispatchX, dispatchY);
+
+    addInkPipeline
+      .with(addInkBindGroups[inkBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    inkBuffer.swap();
+
+    addForcePipeline
+      .with(addForceBindGroups[velBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
   } else {
-    const aspectRatio = canvas.dataset.aspectRatio ?? '1';
-    frame.style.aspectRatio = aspectRatio;
-    frame.style.height = `min(calc(min(100cqw, 100cqh)/(${aspectRatio})), min(100cqw, 100cqh))`;
+    velBuffer.setCurrent(0);
   }
 
-  canvas.style.position = 'absolute';
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
+  advectPipeline
+    .with(advectBindGroups[velBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
 
-  const onResize = () => {
-    canvas.width = frame.clientWidth * window.devicePixelRatio;
-    canvas.height = frame.clientHeight * window.devicePixelRatio;
+  for (let i = 0; i < p.params.jacobiIter; i++) {
+    diffusionPipeline
+      .with(diffusionBindGroups[velBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    velBuffer.swap();
+  }
+
+  divergencePipeline
+    .with(divergenceBindGroups[velBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
+
+  pressureBuffer.setCurrent(0);
+  for (let i = 0; i < p.params.jacobiIter; i++) {
+    pressurePipeline
+      .with(pressureBindGroups[pressureBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    pressureBuffer.swap();
+  }
+
+  projectPipeline
+    .with(
+      projectBindGroups[velBuffer.currentIndex][pressureBuffer.currentIndex]
+    )
+    .dispatchWorkgroups(dispatchX, dispatchY);
+  velBuffer.swap();
+
+  advectInkPipeline
+    .with(advectInkBindGroups[velBuffer.currentIndex][inkBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
+  inkBuffer.swap();
+
+  let renderBG: TgpuBindGroup<{
+    result: { texture: d.WgslTexture2d<d.F32> };
+    background: { texture: d.WgslTexture2d<d.F32> };
+  }>;
+  let pipeline: TgpuRenderPipeline<d.Vec4f>;
+
+  switch (p.params.displayMode) {
+    case 'ink':
+      renderBG = renderBindGroups.ink[inkBuffer.currentIndex];
+      pipeline = renderPipelineInk;
+      break;
+    case 'image':
+      renderBG = renderBindGroups.ink[inkBuffer.currentIndex];
+      pipeline = renderPipelineImage;
+      break;
+    case 'velocity':
+      renderBG = renderBindGroups.velocity[velBuffer.currentIndex];
+      pipeline = renderPipelineVel;
+      break;
+    default:
+      throw new Error('Invalid display mode');
+  }
+
+  pipeline.withColorAttachment({ view: context }).with(renderBG).draw(3);
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// #region Example controls and cleanup
+
+canvas.addEventListener('mousedown', (e) => {
+  const x = e.offsetX * devicePixelRatio;
+  const y = e.offsetY * devicePixelRatio;
+  brushState = {
+    pos: toGrid(x, y),
+    delta: [0, 0],
+    isDown: true,
   };
+});
+canvas.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) * devicePixelRatio;
+    const y = (touch.clientY - rect.top) * devicePixelRatio;
+    brushState = {
+      pos: toGrid(x, y),
+      delta: [0, 0],
+      isDown: true,
+    };
+  },
+  { passive: false }
+);
 
-  onResize();
-  new ResizeObserver(onResize).observe(container);
-}
+const mouseUpEventListener = () => {
+  brushState.isDown = false;
+};
+window.addEventListener('mouseup', mouseUpEventListener);
 
-const controlsPanel = document.createElement('div');
-controlsPanel.style.display = 'grid';
-controlsPanel.style.gridTemplateColumns = '1fr 1fr';
-controlsPanel.style.gap = '1rem';
-if (body.firstChild) {
-  body.insertBefore(controlsPanel, body.firstChild);
-} else {
-  body.appendChild(controlsPanel);
-}
+const touchEndEventListener = () => {
+  brushState.isDown = false;
+};
+window.addEventListener('touchend', touchEndEventListener);
 
-// Execute example
-// @ts-expect-error
-const example = await import('./src/index');
+canvas.addEventListener('mousemove', (e) => {
+  const x = e.offsetX * devicePixelRatio;
+  const y = e.offsetY * devicePixelRatio;
+  const [newX, newY] = toGrid(x, y);
+  brushState.delta = [newX - brushState.pos[0], newY - brushState.pos[1]];
+  brushState.pos = [newX, newY];
+});
+canvas.addEventListener(
+  'touchmove',
+  (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) * devicePixelRatio;
+    const y = (touch.clientY - rect.top) * devicePixelRatio;
+    const [newX, newY] = toGrid(x, y);
+    brushState.delta = [newX - brushState.pos[0], newY - brushState.pos[1]];
+    brushState.pos = [newX, newY];
+  },
+  { passive: false }
+);
 
-// Create example controls
-for (const controls of Object.values(example)) {
-  if (typeof controls === 'function') {
-    continue;
-  }
-
-  for (const [label, params] of Object.entries(controls as Record<string, ExampleControlParam>)) {
-    if ('onButtonClick' in params) {
-      const button = document.createElement('button');
-      button.innerText = label;
-      button.style.gridColumn = 'span 2';
-      button.addEventListener('click', () => params.onButtonClick());
-      controlsPanel.appendChild(button);
-    } else {
-      const controlRow = document.createElement('div');
-      controlRow.style.display = 'contents';
-      const labelDiv = document.createElement('div');
-      labelDiv.innerText = label;
-      controlRow.appendChild(labelDiv);
-
-      if ('onSliderChange' in params) {
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = `${params.min}`;
-        slider.max = `${params.max}`;
-        slider.step = `${params.step ?? 0.1}`;
-        slider.value = `${params.initial}`;
-        slider.addEventListener('input', () => {
-          params.onSliderChange(Number.parseFloat(slider.value));
-        });
-
-        controlRow.appendChild(slider);
-        params.onSliderChange(Number.parseFloat(slider.value));
-      }
-
-      if ('onSelectChange' in params) {
-        const select = document.createElement('select');
-        select.innerHTML = params.options
-          .map((option) => `<option value="${option}">${option}</option>`)
-          .join('');
-        select.value = params.initial;
-
-        select.addEventListener('change', () => {
-          params.onSelectChange(select.value);
-        });
-
-        controlRow.appendChild(select);
-        params.onSelectChange(select.value);
-      }
-
-      if ('onVectorSliderChange' in params) {
-        const sliderContainer = document.createElement('div');
-        sliderContainer.style.display = 'flex';
-        sliderContainer.style.flexDirection = 'column';
-        sliderContainer.style.gap = '0.2rem';
-
-        const currentValues = params.initial;
-        const length = params.min.length;
-        const labels = ['x', 'y', 'z', 'w'];
-
-        for (let i = 0; i < length; i++) {
-          const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '0.2rem';
-
-          const labelSpan = document.createElement('span');
-          labelSpan.innerText = labels[i];
-
-          const slider = document.createElement('input');
-          slider.type = 'range';
-          slider.min = `${params.min[i]}`;
-          slider.max = `${params.max[i]}`;
-          slider.step = `${params.step[i] ?? 0.1}`;
-          slider.value = `${currentValues[i]}`;
-
-          slider.addEventListener('input', () => {
-            currentValues[i] = Number.parseFloat(slider.value);
-            (params.onVectorSliderChange as (value: d.v2f | d.v3f | d.v4f) => void)(currentValues);
-          });
-
-          row.appendChild(labelSpan);
-          row.appendChild(slider);
-          sliderContainer.appendChild(row);
-        }
-
-        (params.onVectorSliderChange as (value: d.v2f | d.v3f | d.v4f) => void)(currentValues);
-        controlRow.appendChild(sliderContainer);
-      }
-
-      if ('onColorChange' in params) {
-        const input = document.createElement('input');
-        input.type = 'color';
-
-        const initial = params.initial ?? [0, 0, 0];
-        input.value = rgbToHex(initial);
-
-        input.addEventListener('input', () => {
-          params.onColorChange(hexToRgb(input.value));
-        });
-
-        params.onColorChange(initial);
-        controlRow.appendChild(input);
-      }
-
-      if ('onToggleChange' in params) {
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.checked = params.initial ?? false;
-
-        toggle.addEventListener('change', () => {
-          params.onToggleChange(toggle.checked);
-        });
-
-        controlRow.appendChild(toggle);
-        params.onToggleChange(toggle.checked);
-      }
-
-      if ('onTextChange' in params) {
-        const input = document.createElement('input');
-        input.value = params.initial ?? '';
-
-        input.addEventListener('input', () => {
-          params.onTextChange(input.value);
-        });
-
-        controlRow.appendChild(input);
-        params.onTextChange(input.value);
-      }
-
-      controlsPanel.appendChild(controlRow);
-    }
+function hideHelp() {
+  const helpElem = document.getElementById('help');
+  if (helpElem) {
+    helpElem.style.opacity = '0';
   }
 }
-
-type SelectControlParam = {
-  onSelectChange: (newValue: string) => void;
-  initial: string;
-  options: string[];
-};
-
-type ToggleControlParam = {
-  onToggleChange: (newValue: boolean) => void;
-  initial: boolean;
-};
-
-type SliderControlParam = {
-  onSliderChange: (newValue: number) => void;
-  initial: number;
-  min?: number;
-  max?: number;
-  step?: number;
-};
-
-type VectorSliderControlParam<T extends d.v2f | d.v3f | d.v4f> = {
-  onVectorSliderChange: (newValue: T) => void;
-  initial: T;
-  min: T;
-  max: T;
-  step: T;
-};
-
-type ColorPickerControlParam = {
-  onColorChange: (newValue: d.v3f) => void;
-  initial: d.v3f;
-};
-
-type ButtonControlParam = {
-  onButtonClick: (() => void) | (() => Promise<void>);
-};
-
-type TextAreaControlParam = {
-  onTextChange: (newValue: string) => void;
-  initial: string;
-};
-
-type ExampleControlParam =
-  | SelectControlParam
-  | ToggleControlParam
-  | SliderControlParam
-  | ButtonControlParam
-  | TextAreaControlParam
-  | VectorSliderControlParam<d.v2f>
-  | VectorSliderControlParam<d.v3f>
-  | VectorSliderControlParam<d.v4f>
-  | ColorPickerControlParam;
-
-function hexToRgb(hex: string): d.v3f {
-  return d.vec3f(
-    Number.parseInt(hex.slice(1, 3), 16) / 255,
-    Number.parseInt(hex.slice(3, 5), 16) / 255,
-    Number.parseInt(hex.slice(5, 7), 16) / 255,
-  );
+for (const eventName of ['click', 'touchstart']) {
+  canvas.addEventListener(eventName, hideHelp, { once: true, passive: true });
 }
 
-function componentToHex(c: number) {
-  const hex = (c * 255).toString(16);
-  return hex.length === 1 ? `0${hex}` : hex;
+export const controls = defineControls({
+  'timestep (dt)': {
+    initial: p.params.dt,
+    min: 0.05,
+    max: 2.0,
+    step: 0.01,
+    onSliderChange: (value) => {
+      p.params.dt = value;
+      simParamBuffer.patch({
+        dt: p.params.dt,
+      });
+    },
+  },
+  viscosity: {
+    initial: p.params.viscosity,
+    min: 0,
+    max: 0.1,
+    step: 0.000001,
+    onSliderChange: (value) => {
+      p.params.viscosity = value;
+      simParamBuffer.patch({
+        viscosity: p.params.viscosity,
+      });
+    },
+  },
+  'jacobi iterations': {
+    initial: p.params.jacobiIter,
+    min: 2,
+    max: 50,
+    step: 2,
+    onSliderChange: (value) => {
+      p.params.jacobiIter = value;
+    },
+  },
+  visualization: {
+    initial: 'image',
+    options: ['image', 'velocity', 'ink'],
+    onSelectChange: (value) => {
+      p.params.displayMode = value;
+    },
+  },
+  pause: {
+    initial: false,
+    onToggleChange: (value) => {
+      p.params.paused = value;
+    },
+  },
+});
+
+export function onCleanup() {
+  window.removeEventListener('mouseup', mouseUpEventListener);
+  window.removeEventListener('touchend', touchEndEventListener);
+  root.destroy();
 }
 
-function rgbToHex(rgb: d.v3f) {
-  return `#${rgb.map(componentToHex).join('')}`;
-}
+// #endregion
 =======
-import { d } from 'typegpu';
+import {
+  tgpu,
+  d,
+  type TgpuBindGroup,
+  type TgpuComputeFn,
+  type TgpuFragmentFn,
+  type TgpuRenderPipeline,
+} from 'typegpu';
+import * as p from './params.ts';
+import {
+  fragmentImageFn,
+  fragmentInkFn,
+  fragmentVelFn,
+  renderFn,
+  renderLayout,
+} from './render.ts';
+import * as c from './simulation.ts';
+import type { BrushState } from './types.ts';
+import { defineControls } from './common/defineControls.ts';
 
-const body = document.querySelector('body') as HTMLBodyElement;
-body.style.display = 'flex';
-body.style.flexDirection = 'column';
-body.style.alignItems = 'center';
-body.style.height = '100vh';
-body.style.gap = '1.5rem';
-body.style.margin = '0';
-body.style.boxSizing = 'border-box';
-body.style.padding = '1rem';
+// Initialize
+const root = await tgpu.init();
+const device = root.device;
 
-// Resize canvases
-for (const canvas of document.querySelectorAll('canvas')) {
-  if ('width' in canvas.attributes || 'height' in canvas.attributes) {
-    continue; // custom canvas, not replacing with resizable
+// Setup canvas
+const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+const context = root.configureContext({ canvas, alphaMode: 'premultiplied' });
+
+// Helpers
+function createField(name: string) {
+  return root
+    .createTexture({ size: [p.SIM_N, p.SIM_N], format: 'rgba16float' })
+    .$usage('storage', 'sampled')
+    .$name(name);
+}
+
+function createComputePipeline(fn: TgpuComputeFn) {
+  return root.createComputePipeline({ compute: fn });
+}
+
+function toGrid(x: number, y: number): [number, number] {
+  const gx = Math.floor((x / canvas.width) * p.SIM_N);
+  const gy = Math.floor(((canvas.height - y) / canvas.height) * p.SIM_N);
+  return [gx, gy];
+}
+
+class DoubleBuffer<T> {
+  buffers: [T, T];
+  index: number;
+  constructor(bufferA: T, bufferB: T, initialIndex = 0) {
+    this.buffers = [bufferA, bufferB];
+    this.index = initialIndex;
   }
 
-  const container = document.createElement('div');
-  const frame = document.createElement('div');
+  get current(): T {
+    return this.buffers[this.index];
+  }
+  get currentIndex(): number {
+    return this.index;
+  }
 
-  canvas.parentElement?.replaceChild(container, canvas);
+  swap(): void {
+    this.index ^= 1;
+  }
+  setCurrent(index: number): void {
+    this.index = index;
+  }
+}
 
-  frame.appendChild(canvas);
-  container.appendChild(frame);
+// Buffers and brush state
+const simParamBuffer = root
+  .createBuffer(p.ShaderParams, {
+    dt: p.params.dt,
+    viscosity: p.params.viscosity,
+  })
+  .$usage('uniform');
 
-  container.style.display = 'flex';
-  container.style.flex = '1';
-  container.style.justifyContent = 'center';
-  container.style.alignItems = 'top';
-  container.style.width = '100%';
+const brushParamBuffer = root
+  .createBuffer(p.BrushParams, {
+    pos: d.vec2i(0, 0),
+    delta: d.vec2f(0, 0),
+    radius: p.RADIUS,
+    forceScale: p.FORCE_SCALE,
+    inkAmount: p.INK_AMOUNT,
+  })
+  .$usage('uniform');
 
-  container.style.containerType = 'size';
+let brushState: BrushState = {
+  pos: [0, 0],
+  delta: [0, 0],
+  isDown: false,
+};
 
-  frame.style.position = 'relative';
+// Load and create background texture
+const response = await fetch('https://docs.swmansion.com/TypeGPU/plums.jpg');
+const plums = await createImageBitmap(await response.blob(), {
+  resizeWidth: p.N,
+  resizeHeight: p.N,
+  resizeQuality: 'high',
+});
 
-  if (canvas.dataset.fitToContainer !== undefined) {
-    frame.style.width = '100%';
-    frame.style.height = '100%';
+const backgroundTexture = root
+  .createTexture({ size: [p.N, p.N], format: 'rgba8unorm' })
+  .$usage('sampled', 'render');
+device.queue.copyExternalImageToTexture(
+  { source: plums },
+  { texture: root.unwrap(backgroundTexture) },
+  { width: p.N, height: p.N, depthOrArrayLayers: 1 }
+);
+
+// Create simulation textures
+const velTex = [createField('velocity0'), createField('velocity1')];
+const inkTex = [createField('density0'), createField('density1')];
+const pressureTex = [createField('pressure0'), createField('pressure1')];
+
+const newInkTex = createField('addedInk');
+const forceTex = createField('force');
+const divergenceTex = createField('divergence');
+
+const linSampler = root.createSampler({
+  magFilter: 'linear',
+  minFilter: 'linear',
+});
+
+// Create compute pipelines
+const brushPipeline = createComputePipeline(c.brushFn);
+const addForcePipeline = createComputePipeline(c.addForcesFn);
+const advectPipeline = createComputePipeline(c.advectFn);
+const diffusionPipeline = createComputePipeline(c.diffusionFn);
+const divergencePipeline = createComputePipeline(c.divergenceFn);
+const pressurePipeline = createComputePipeline(c.pressureFn);
+const projectPipeline = createComputePipeline(c.projectFn);
+const advectInkPipeline = createComputePipeline(c.advectInkFn);
+const addInkPipeline = createComputePipeline(c.addInkFn);
+
+// Create render pipelines
+function createRenderPipeline(
+  fragmentFn: TgpuFragmentFn<{ uv: d.Vec2f }, d.Vec4f>
+) {
+  return root.createRenderPipeline({
+    vertex: renderFn,
+    fragment: fragmentFn,
+
+    primitive: {
+      topology: 'triangle-strip',
+    },
+  });
+}
+
+const renderPipelineInk = createRenderPipeline(fragmentInkFn);
+const renderPipelineVel = createRenderPipeline(fragmentVelFn);
+const renderPipelineImage = createRenderPipeline(fragmentImageFn);
+
+// Setup simulation buffers
+const velBuffer = new DoubleBuffer(velTex[0], velTex[1]);
+const inkBuffer = new DoubleBuffer(inkTex[0], inkTex[1]);
+const pressureBuffer = new DoubleBuffer(pressureTex[0], pressureTex[1]);
+
+const dispatchX = Math.ceil(p.SIM_N / p.WORKGROUP_SIZE_X);
+const dispatchY = Math.ceil(p.SIM_N / p.WORKGROUP_SIZE_Y);
+
+// Create bind groups
+const brushBindGroup = root.createBindGroup(c.brushLayout, {
+  brushParams: brushParamBuffer,
+  forceDst: forceTex.createView(
+    d.textureStorage2d('rgba16float', 'write-only')
+  ),
+  inkDst: newInkTex.createView(d.textureStorage2d('rgba16float', 'write-only')),
+});
+
+const addInkBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.addInkLayout, {
+    src: inkTex[srcIdx].createView(d.texture2d(d.f32)),
+    add: newInkTex.createView(d.texture2d(d.f32)),
+    dst: inkTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const addForceBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.addForcesLayout, {
+    src: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    force: forceTex.createView(d.texture2d(d.f32)),
+    dst: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+  });
+});
+
+const advectBindGroups = [0, 1].map((i) => {
+  const srcIdx = 1 - i;
+  const dstIdx = i;
+  return root.createBindGroup(c.advectLayout, {
+    src: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    dst: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+    linSampler,
+  });
+});
+
+const diffusionBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.diffusionLayout, {
+    in: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    out: velTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+    simParams: simParamBuffer,
+  });
+});
+
+const divergenceBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  return root.createBindGroup(c.divergenceLayout, {
+    vel: velTex[srcIdx].createView(d.texture2d(d.f32)),
+    div: divergenceTex.createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const pressureBindGroups = [0, 1].map((i) => {
+  const srcIdx = i;
+  const dstIdx = 1 - i;
+  return root.createBindGroup(c.pressureLayout, {
+    x: pressureTex[srcIdx].createView(d.texture2d(d.f32)),
+    b: divergenceTex.createView(d.texture2d(d.f32)),
+    out: pressureTex[dstIdx].createView(
+      d.textureStorage2d('rgba16float', 'write-only')
+    ),
+  });
+});
+
+const projectBindGroups = [0, 1].map((velIdx) =>
+  [0, 1].map((pIdx) => {
+    const srcVelIdx = velIdx;
+    const dstVelIdx = 1 - velIdx;
+    const srcPIdx = pIdx;
+    return root.createBindGroup(c.projectLayout, {
+      vel: velTex[srcVelIdx].createView(d.texture2d(d.f32)),
+      p: pressureTex[srcPIdx].createView(d.texture2d(d.f32)),
+      out: velTex[dstVelIdx].createView(
+        d.textureStorage2d('rgba16float', 'write-only')
+      ),
+    });
+  })
+);
+
+const advectInkBindGroups = [0, 1].map((velIdx) =>
+  [0, 1].map((inkIdx) => {
+    const srcVelIdx = velIdx;
+    const srcInkIdx = inkIdx;
+    const dstInkIdx = 1 - inkIdx;
+    return root.createBindGroup(c.advectInkLayout, {
+      vel: velTex[srcVelIdx].createView(d.texture2d(d.f32)),
+      src: inkTex[srcInkIdx].createView(d.texture2d(d.f32)),
+      dst: inkTex[dstInkIdx].createView(
+        d.textureStorage2d('rgba16float', 'write-only')
+      ),
+      simParams: simParamBuffer,
+      linSampler,
+    });
+  })
+);
+
+const renderBindGroups = {
+  ink: [
+    root.createBindGroup(renderLayout, {
+      result: inkTex[0].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+    root.createBindGroup(renderLayout, {
+      result: inkTex[1].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+  ],
+  velocity: [
+    root.createBindGroup(renderLayout, {
+      result: velTex[0].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+    root.createBindGroup(renderLayout, {
+      result: velTex[1].createView(d.texture2d(d.f32)),
+      background: backgroundTexture.createView(d.texture2d(d.f32)),
+      linSampler,
+    }),
+  ],
+};
+
+// Main rendering loop
+function loop() {
+  if (p.params.paused) {
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  if (brushState.isDown) {
+    brushParamBuffer.patch({
+      pos: d.vec2i(...brushState.pos),
+      delta: d.vec2f(...brushState.delta),
+    });
+
+    brushPipeline.with(brushBindGroup).dispatchWorkgroups(dispatchX, dispatchY);
+
+    addInkPipeline
+      .with(addInkBindGroups[inkBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    inkBuffer.swap();
+
+    addForcePipeline
+      .with(addForceBindGroups[velBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
   } else {
-    const aspectRatio = canvas.dataset.aspectRatio ?? '1';
-    frame.style.aspectRatio = aspectRatio;
-    frame.style.height = `min(calc(min(100cqw, 100cqh)/(${aspectRatio})), min(100cqw, 100cqh))`;
+    velBuffer.setCurrent(0);
   }
 
-  canvas.style.position = 'absolute';
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
+  advectPipeline
+    .with(advectBindGroups[velBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
 
-  const onResize = () => {
-    canvas.width = frame.clientWidth * window.devicePixelRatio;
-    canvas.height = frame.clientHeight * window.devicePixelRatio;
+  for (let i = 0; i < p.params.jacobiIter; i++) {
+    diffusionPipeline
+      .with(diffusionBindGroups[velBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    velBuffer.swap();
+  }
+
+  divergencePipeline
+    .with(divergenceBindGroups[velBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
+
+  pressureBuffer.setCurrent(0);
+  for (let i = 0; i < p.params.jacobiIter; i++) {
+    pressurePipeline
+      .with(pressureBindGroups[pressureBuffer.currentIndex])
+      .dispatchWorkgroups(dispatchX, dispatchY);
+    pressureBuffer.swap();
+  }
+
+  projectPipeline
+    .with(
+      projectBindGroups[velBuffer.currentIndex][pressureBuffer.currentIndex]
+    )
+    .dispatchWorkgroups(dispatchX, dispatchY);
+  velBuffer.swap();
+
+  advectInkPipeline
+    .with(advectInkBindGroups[velBuffer.currentIndex][inkBuffer.currentIndex])
+    .dispatchWorkgroups(dispatchX, dispatchY);
+  inkBuffer.swap();
+
+  let renderBG: TgpuBindGroup<{
+    result: { texture: d.WgslTexture2d<d.F32> };
+    background: { texture: d.WgslTexture2d<d.F32> };
+  }>;
+  let pipeline: TgpuRenderPipeline<d.Vec4f>;
+
+  switch (p.params.displayMode) {
+    case 'ink':
+      renderBG = renderBindGroups.ink[inkBuffer.currentIndex];
+      pipeline = renderPipelineInk;
+      break;
+    case 'image':
+      renderBG = renderBindGroups.ink[inkBuffer.currentIndex];
+      pipeline = renderPipelineImage;
+      break;
+    case 'velocity':
+      renderBG = renderBindGroups.velocity[velBuffer.currentIndex];
+      pipeline = renderPipelineVel;
+      break;
+    default:
+      throw new Error('Invalid display mode');
+  }
+
+  pipeline.withColorAttachment({ view: context }).with(renderBG).draw(3);
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// #region Example controls and cleanup
+
+canvas.addEventListener('mousedown', (e) => {
+  const x = e.offsetX * devicePixelRatio;
+  const y = e.offsetY * devicePixelRatio;
+  brushState = {
+    pos: toGrid(x, y),
+    delta: [0, 0],
+    isDown: true,
   };
+});
+canvas.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) * devicePixelRatio;
+    const y = (touch.clientY - rect.top) * devicePixelRatio;
+    brushState = {
+      pos: toGrid(x, y),
+      delta: [0, 0],
+      isDown: true,
+    };
+  },
+  { passive: false }
+);
 
-  onResize();
-  new ResizeObserver(onResize).observe(container);
-}
+const mouseUpEventListener = () => {
+  brushState.isDown = false;
+};
+window.addEventListener('mouseup', mouseUpEventListener);
 
-const controlsPanel = document.createElement('div');
-controlsPanel.style.display = 'grid';
-controlsPanel.style.gridTemplateColumns = '1fr 1fr';
-controlsPanel.style.gap = '1rem';
-if (body.firstChild) {
-  body.insertBefore(controlsPanel, body.firstChild);
-} else {
-  body.appendChild(controlsPanel);
-}
+const touchEndEventListener = () => {
+  brushState.isDown = false;
+};
+window.addEventListener('touchend', touchEndEventListener);
 
-// Execute example
-// @ts-expect-error
-const example = await import('./src/index');
+canvas.addEventListener('mousemove', (e) => {
+  const x = e.offsetX * devicePixelRatio;
+  const y = e.offsetY * devicePixelRatio;
+  const [newX, newY] = toGrid(x, y);
+  brushState.delta = [newX - brushState.pos[0], newY - brushState.pos[1]];
+  brushState.pos = [newX, newY];
+});
+canvas.addEventListener(
+  'touchmove',
+  (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) * devicePixelRatio;
+    const y = (touch.clientY - rect.top) * devicePixelRatio;
+    const [newX, newY] = toGrid(x, y);
+    brushState.delta = [newX - brushState.pos[0], newY - brushState.pos[1]];
+    brushState.pos = [newX, newY];
+  },
+  { passive: false }
+);
 
-// Create example controls
-for (const controls of Object.values(example)) {
-  if (typeof controls === 'function') {
-    continue;
-  }
-
-  for (const [label, params] of Object.entries(controls as Record<string, ExampleControlParam>)) {
-    if ('onButtonClick' in params) {
-      const button = document.createElement('button');
-      button.innerText = label;
-      button.style.gridColumn = 'span 2';
-      button.addEventListener('click', () => params.onButtonClick());
-      controlsPanel.appendChild(button);
-    } else {
-      const controlRow = document.createElement('div');
-      controlRow.style.display = 'contents';
-      const labelDiv = document.createElement('div');
-      labelDiv.innerText = label;
-      controlRow.appendChild(labelDiv);
-
-      if ('onSliderChange' in params) {
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = `${params.min}`;
-        slider.max = `${params.max}`;
-        slider.step = `${params.step ?? 0.1}`;
-        slider.value = `${params.initial}`;
-        slider.addEventListener('input', () => {
-          params.onSliderChange(Number.parseFloat(slider.value));
-        });
-
-        controlRow.appendChild(slider);
-        params.onSliderChange(Number.parseFloat(slider.value));
-      }
-
-      if ('onSelectChange' in params) {
-        const select = document.createElement('select');
-        select.innerHTML = params.options
-          .map((option) => `<option value="${option}">${option}</option>`)
-          .join('');
-        select.value = params.initial;
-
-        select.addEventListener('change', () => {
-          params.onSelectChange(select.value);
-        });
-
-        controlRow.appendChild(select);
-        params.onSelectChange(select.value);
-      }
-
-      if ('onVectorSliderChange' in params) {
-        const sliderContainer = document.createElement('div');
-        sliderContainer.style.display = 'flex';
-        sliderContainer.style.flexDirection = 'column';
-        sliderContainer.style.gap = '0.2rem';
-
-        const currentValues = params.initial;
-        const length = params.min.length;
-        const labels = ['x', 'y', 'z', 'w'];
-
-        for (let i = 0; i < length; i++) {
-          const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '0.2rem';
-
-          const labelSpan = document.createElement('span');
-          labelSpan.innerText = labels[i];
-
-          const slider = document.createElement('input');
-          slider.type = 'range';
-          slider.min = `${params.min[i]}`;
-          slider.max = `${params.max[i]}`;
-          slider.step = `${params.step[i] ?? 0.1}`;
-          slider.value = `${currentValues[i]}`;
-
-          slider.addEventListener('input', () => {
-            currentValues[i] = Number.parseFloat(slider.value);
-            (params.onVectorSliderChange as (value: d.v2f | d.v3f | d.v4f) => void)(currentValues);
-          });
-
-          row.appendChild(labelSpan);
-          row.appendChild(slider);
-          sliderContainer.appendChild(row);
-        }
-
-        (params.onVectorSliderChange as (value: d.v2f | d.v3f | d.v4f) => void)(currentValues);
-        controlRow.appendChild(sliderContainer);
-      }
-
-      if ('onColorChange' in params) {
-        const input = document.createElement('input');
-        input.type = 'color';
-
-        const initial = params.initial ?? [0, 0, 0];
-        input.value = rgbToHex(initial);
-
-        input.addEventListener('input', () => {
-          params.onColorChange(hexToRgb(input.value));
-        });
-
-        params.onColorChange(initial);
-        controlRow.appendChild(input);
-      }
-
-      if ('onToggleChange' in params) {
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.checked = params.initial ?? false;
-
-        toggle.addEventListener('change', () => {
-          params.onToggleChange(toggle.checked);
-        });
-
-        controlRow.appendChild(toggle);
-        params.onToggleChange(toggle.checked);
-      }
-
-      if ('onTextChange' in params) {
-        const input = document.createElement('input');
-        input.value = params.initial ?? '';
-
-        input.addEventListener('input', () => {
-          params.onTextChange(input.value);
-        });
-
-        controlRow.appendChild(input);
-        params.onTextChange(input.value);
-      }
-
-      controlsPanel.appendChild(controlRow);
-    }
+function hideHelp() {
+  const helpElem = document.getElementById('help');
+  if (helpElem) {
+    helpElem.style.opacity = '0';
   }
 }
-
-type SelectControlParam = {
-  onSelectChange: (newValue: string) => void;
-  initial: string;
-  options: string[];
-};
-
-type ToggleControlParam = {
-  onToggleChange: (newValue: boolean) => void;
-  initial: boolean;
-};
-
-type SliderControlParam = {
-  onSliderChange: (newValue: number) => void;
-  initial: number;
-  min?: number;
-  max?: number;
-  step?: number;
-};
-
-type VectorSliderControlParam<T extends d.v2f | d.v3f | d.v4f> = {
-  onVectorSliderChange: (newValue: T) => void;
-  initial: T;
-  min: T;
-  max: T;
-  step: T;
-};
-
-type ColorPickerControlParam = {
-  onColorChange: (newValue: d.v3f) => void;
-  initial: d.v3f;
-};
-
-type ButtonControlParam = {
-  onButtonClick: (() => void) | (() => Promise<void>);
-};
-
-type TextAreaControlParam = {
-  onTextChange: (newValue: string) => void;
-  initial: string;
-};
-
-type ExampleControlParam =
-  | SelectControlParam
-  | ToggleControlParam
-  | SliderControlParam
-  | ButtonControlParam
-  | TextAreaControlParam
-  | VectorSliderControlParam<d.v2f>
-  | VectorSliderControlParam<d.v3f>
-  | VectorSliderControlParam<d.v4f>
-  | ColorPickerControlParam;
-
-function hexToRgb(hex: string): d.v3f {
-  return d.vec3f(
-    Number.parseInt(hex.slice(1, 3), 16) / 255,
-    Number.parseInt(hex.slice(3, 5), 16) / 255,
-    Number.parseInt(hex.slice(5, 7), 16) / 255,
-  );
+for (const eventName of ['click', 'touchstart']) {
+  canvas.addEventListener(eventName, hideHelp, { once: true, passive: true });
 }
 
-function componentToHex(c: number) {
-  const hex = (c * 255).toString(16);
-  return hex.length === 1 ? `0${hex}` : hex;
+export const controls = defineControls({
+  'timestep (dt)': {
+    initial: p.params.dt,
+    min: 0.05,
+    max: 2.0,
+    step: 0.01,
+    onSliderChange: (value) => {
+      p.params.dt = value;
+      simParamBuffer.patch({
+        dt: p.params.dt,
+      });
+    },
+  },
+  viscosity: {
+    initial: p.params.viscosity,
+    min: 0,
+    max: 0.1,
+    step: 0.000001,
+    onSliderChange: (value) => {
+      p.params.viscosity = value;
+      simParamBuffer.patch({
+        viscosity: p.params.viscosity,
+      });
+    },
+  },
+  'jacobi iterations': {
+    initial: p.params.jacobiIter,
+    min: 2,
+    max: 50,
+    step: 2,
+    onSliderChange: (value) => {
+      p.params.jacobiIter = value;
+    },
+  },
+  visualization: {
+    initial: 'image',
+    options: ['image', 'velocity', 'ink'],
+    onSelectChange: (value) => {
+      p.params.displayMode = value;
+    },
+  },
+  pause: {
+    initial: false,
+    onToggleChange: (value) => {
+      p.params.paused = value;
+    },
+  },
+});
+
+export function onCleanup() {
+  window.removeEventListener('mouseup', mouseUpEventListener);
+  window.removeEventListener('touchend', touchEndEventListener);
+  root.destroy();
 }
 
-function rgbToHex(rgb: d.v3f) {
-  return `#${rgb.map(componentToHex).join('')}`;
-}
+// #endregion
 >>>>>>> 304e5bbdce46baedae9e2a41c01a0f156962f3e7
